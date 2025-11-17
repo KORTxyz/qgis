@@ -34,27 +34,105 @@ import os
 import sys
 import inspect
 
-from qgis.core import QgsProcessingAlgorithm, QgsApplication
+# --- QGIS imports ---
+from qgis.core import QgsSettings, QgsApplication
+from qgis.gui import QgsOptionsPageWidget, QgsOptionsWidgetFactory
+
+# --- PyQt imports ---
+from qgis.PyQt.QtWidgets import (
+    QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QPushButton
+)
+from qgis.PyQt.QtGui import QIcon, QDesktopServices
+from qgis.PyQt.QtCore import QUrl
+
+# --- Local import ---
 from .kortxyz_provider import KORTxyzProvider
 
+# --- Ensure module path ---
 cmd_folder = os.path.split(inspect.getfile(inspect.currentframe()))[0]
-
 if cmd_folder not in sys.path:
     sys.path.insert(0, cmd_folder)
 
 
-class KORTxyzPlugin(object):
-
+# --- Options Factory ---
+class MyPluginOptionsFactory(QgsOptionsWidgetFactory):
     def __init__(self):
-        self.provider = None
+        super().__init__()
 
+    def icon(self):
+        icon_path = os.path.join(os.path.dirname(__file__), 'icon.svg')
+        return QIcon (icon_path)
+    
+    def createWidget(self, parent):
+        return ConfigOptionsPage(parent)
+    
+# --- Options Page ---
+class ConfigOptionsPage(QgsOptionsPageWidget):
+    def __init__(self, parent):
+        super().__init__(parent)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(6, 6, 6, 6)
+
+        label = QLabel("<b>Datafordeler API KEY</b>")
+
+        hbox = QHBoxLayout()
+        self.df_api_key_edit = QLineEdit()
+        self.df_api_key_edit.setPlaceholderText("<API-Key>")
+        self.generate_btn = QPushButton("Fetch APIKEY…")
+
+        hbox.addWidget(self.df_api_key_edit)
+        hbox.addWidget(self.generate_btn)
+
+        layout.addWidget(label)
+        layout.addLayout(hbox)
+        layout.addStretch()
+        self.setLayout(layout)
+
+        self.generate_btn.clicked.connect(self.generate_token)
+        self.reset()
+
+    def generate_token(self):
+        QDesktopServices.openUrl(QUrl("https://portal.datafordeler.dk/it-systemer"))
+
+    def apply(self):
+        s = QgsSettings()
+        s.setValue("KORTxyz/df_api_key", self.df_api_key_edit.text())
+
+    def reset(self):
+        s = QgsSettings()
+        self.df_api_key_edit.setText(s.value("KORTxyz/df_api_key", ""))
+
+
+
+# --- Main Plugin Class ---
+class KORTxyzPlugin:
+    def __init__(self, iface):
+        self.iface = iface
+        self.provider = None
+        self.options_factory = None
+    
     def initProcessing(self):
-        """Init Processing provider for QGIS >= 3.8."""
         self.provider = KORTxyzProvider()
         QgsApplication.processingRegistry().addProvider(self.provider)
 
     def initGui(self):
         self.initProcessing()
+        self.options_factory = MyPluginOptionsFactory()
+        self.options_factory.setTitle('KORTxyz')
+ 
+        # Register the options page in QGIS Preferences
+        if hasattr(self.iface, 'registerOptionsWidgetFactory'):
+            self.iface.registerOptionsWidgetFactory(self.options_factory)
+        else:
+            from qgis.gui import QgsGui
+            QgsGui.instance().registerOptionsWidgetFactory(self.options_factory)
 
     def unload(self):
-        QgsApplication.processingRegistry().removeProvider(self.provider)
+        if self.options_factory is not None:
+            if hasattr(self.iface, 'unregisterOptionsWidgetFactory'):
+                self.iface.unregisterOptionsWidgetFactory(self.options_factory)
+            else:
+                from qgis.gui import QgsGui
+                QgsGui.instance().unregisterOptionsWidgetFactory(self.options_factory)
+            self.options_factory = None

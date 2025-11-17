@@ -1,0 +1,7 @@
+{
+  "python.pythonPath": "C:/OSGeo4W/bin/python3.exe",
+  "terminal.integrated.env.windows": {
+    "PYTHONPATH": "C:/OSGeo4W/apps/qgis/python;C:/OSGeo4W/apps/qgis/python/plugins",
+    "QGIS_PREFIX_PATH": "C:/OSGeo4W/apps/qgis"
+  }
+}

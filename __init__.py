@@ -36,4 +36,4 @@ def classFactory(iface):  # pylint: disable=invalid-name
     """
     #
     from .kortxyz import KORTxyzPlugin
-    return KORTxyzPlugin()
+    return KORTxyzPlugin(iface)

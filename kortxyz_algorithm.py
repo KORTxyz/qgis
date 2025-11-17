@@ -31,11 +31,15 @@ __copyright__ = '(C) 2025 by Tino Kastbjerg Stigsen'
 __revision__ = '$Format:%H$'
 
 from qgis.PyQt.QtCore import QCoreApplication
+from qgis.PyQt.QtWidgets import QMessageBox
+
 from qgis.core import (QgsProcessing,
+                       QgsProcessingException,
                        QgsFeatureSink,
                        QgsProcessingAlgorithm,
                        QgsProcessingParameterFeatureSource,
-                       QgsProcessingParameterFeatureSink)
+                       QgsProcessingParameterFeatureSink,
+                       )
 
 
 class KORTxyzAlgorithm(QgsProcessingAlgorithm):
@@ -74,7 +78,6 @@ class KORTxyzAlgorithm(QgsProcessingAlgorithm):
                 [QgsProcessing.TypeVectorAnyGeometry]
             )
         )
-
         # We add a feature sink in which to store our processed features (this
         # usually takes the form of a newly created vector layer when the
         # algorithm is run in QGIS).
@@ -129,7 +132,7 @@ class KORTxyzAlgorithm(QgsProcessingAlgorithm):
         lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'FTPcaller'
+        return "kortz"
 
     def displayName(self):
         """

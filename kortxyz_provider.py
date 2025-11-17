@@ -31,7 +31,16 @@ __copyright__ = '(C) 2025 by Tino Kastbjerg Stigsen'
 __revision__ = '$Format:%H$'
 
 from qgis.core import QgsProcessingProvider
-from .kortxyz_algorithm import KORTxyzAlgorithm
+from qgis.PyQt.QtGui import QIcon
+import os
+
+from .ETL.ftp_caller import FTPcaller
+from .ETL.unzipper import Unzipper
+
+from .Datafordeler.DAGI import DAGI
+from .Datafordeler.GeoDK import GeoDK
+from .Datafordeler.MAT2 import MAT2
+from .Datafordeler.Stednavne import Stednavne
 
 
 class KORTxyzProvider(QgsProcessingProvider):
@@ -53,7 +62,14 @@ class KORTxyzProvider(QgsProcessingProvider):
         """
         Loads all algorithms belonging to this provider.
         """
-        self.addAlgorithm(KORTxyzAlgorithm())
+        self.addAlgorithm(FTPcaller())
+        self.addAlgorithm(Unzipper())
+
+        self.addAlgorithm(DAGI())
+        self.addAlgorithm(GeoDK())
+        self.addAlgorithm(MAT2())
+        self.addAlgorithm(Stednavne())
+
         # add additional algorithms here
         # self.addAlgorithm(MyOtherAlgorithm())
 
@@ -79,8 +95,9 @@ class KORTxyzProvider(QgsProcessingProvider):
         Should return a QIcon which is used for your provider inside
         the Processing toolbox.
         """
-        return QgsProcessingProvider.icon(self)
-
+        icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
+        return QIcon(icon_path)
+    
     def longName(self):
         """
         Returns the a longer version of the provider name, which can include
