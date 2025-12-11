@@ -113,15 +113,24 @@ class KORTxyzPlugin:
         self.options_factory = None
     
     def initProcessing(self):
+        reg = QgsApplication.processingRegistry()
+
+        # Remove any previous instances (Fix for Plugin Reloader)
+        old = reg.providerById("KORTxyz")
+        if old:
+            reg.removeProvider(old)
+
+        # Add fresh provider
         self.provider = KORTxyzProvider()
-        QgsApplication.processingRegistry().addProvider(self.provider)
+        reg.addProvider(self.provider)
 
     def initGui(self):
         self.initProcessing()
+
+        # Options page
         self.options_factory = MyPluginOptionsFactory()
         self.options_factory.setTitle('KORTxyz')
- 
-        # Register the options page in QGIS Preferences
+
         if hasattr(self.iface, 'registerOptionsWidgetFactory'):
             self.iface.registerOptionsWidgetFactory(self.options_factory)
         else:
@@ -129,10 +138,18 @@ class KORTxyzPlugin:
             QgsGui.instance().registerOptionsWidgetFactory(self.options_factory)
 
     def unload(self):
-        if self.options_factory is not None:
+        # Remove UI components
+        if self.options_factory:
             if hasattr(self.iface, 'unregisterOptionsWidgetFactory'):
                 self.iface.unregisterOptionsWidgetFactory(self.options_factory)
             else:
                 from qgis.gui import QgsGui
                 QgsGui.instance().unregisterOptionsWidgetFactory(self.options_factory)
+
             self.options_factory = None
+
+        # Remove processing provider
+        reg = QgsApplication.processingRegistry()
+        if self.provider:
+            reg.removeProvider(self.provider)
+            self.provider = None

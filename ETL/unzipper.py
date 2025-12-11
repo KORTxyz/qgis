@@ -4,65 +4,99 @@ Name : Unzipper
 Group : ETL
 With QGIS : 34000
 """
+
 import os
 
-
-from qgis.core import QgsProcessingAlgorithm
-from qgis.core import QgsProcessingParameterFile
-from qgis.core import QgsProcessingOutputFile
-from qgis.core import QgsProcessingOutputVariant
-from qgis.core import QgsProcessingUtils
-from qgis.core import QgsZipUtils
-
-import processing
+from qgis.core import (
+    QgsProcessing,
+    QgsProcessingAlgorithm,
+    QgsProcessingParameterFile,
+    QgsProcessingParameterFeatureSink,
+    QgsProcessingOutputVariant,
+    QgsProcessingUtils,
+    QgsProcessingException,
+    QgsZipUtils,
+)
 
 
 class Unzipper(QgsProcessingAlgorithm):
-    
+
+    PARAM_ZIP = "ZIPFILE"
+    PARAM_DEST = "DIST"
+    OUT_FILES = "DISTFILES"
+    OUT_FIRST = "FIRSTFILE"
+
     def initAlgorithm(self, config=None):
+
+        # Input ZIP file
         self.addParameter(
-            QgsProcessingParameterFile('Zipfile','File to be unzipped', behavior=QgsProcessingParameterFile.File )
-        )
-        
-        self.addParameter(
-            QgsProcessingParameterFile('DIST', 'Destination to unzip files to', optional=True, behavior=QgsProcessingParameterFile.Folder, defaultValue=None)
-        )
-        
-        self.addOutput(
-            QgsProcessingOutputVariant('DISTFILES', 'List of unzipped files')
+            QgsProcessingParameterFile(
+                self.PARAM_ZIP,
+                "File to be unzipped",
+                behavior=QgsProcessingParameterFile.File,
+            )
         )
 
-        self.addOutput(
-            QgsProcessingOutputFile('FIRSTFILE', 'First file in Zip')
+        # Optional destination folder
+        self.addParameter(
+            QgsProcessingParameterFile(
+                self.PARAM_DEST,
+                "Destination to unzip files to",
+                behavior=QgsProcessingParameterFile.Folder,
+                optional=True,
+                defaultValue=None,
+            )
         )
 
+        # Output: list of files
+        self.addOutput(
+            QgsProcessingOutputVariant(self.OUT_FILES, "List of unzipped files")
+        )
+
+        # Output: first file in list
+        self.addParameter(QgsProcessingParameterFeatureSink(self.OUT_FIRST, "First file in Zip"))
 
     def processAlgorithm(self, parameters, context, feedback):
-        results = {}
-        outputs = {}
+
+        # --- Resolve inputs ---
+        zip_path = self.parameterAsFile(parameters, self.PARAM_ZIP, context)
+
+        dest_folder = self.parameterAsString(parameters, self.PARAM_DEST, context)
+        if not dest_folder:
+            dest_folder = QgsProcessingUtils.tempFolder()
+
+        # Ensure the directory exists
+        os.makedirs(dest_folder, exist_ok=True)
+
+        # --- Unzip ---
+        # QgsZipUtils.unzip returns (ok, list_of_files)
+        ok, file_list = QgsZipUtils.unzip(zip_path, dest_folder)
         
-        if not parameters['DIST']:
-            parameters['DIST'] = QgsProcessingUtils.tempFolder()
-   
-        outputs['UnzippedFiles'] = QgsZipUtils.unzip(parameters['Zipfile'],parameters['DIST'])
-        
-        
-        results['DISTFILES'] = outputs['UnzippedFiles'][1]
-        results['FIRSTFILE'] = outputs['UnzippedFiles'][1][0]
-        
+        feedback.pushInfo(f"willLoadLayerOnCompletion: {context.willLoadLayerOnCompletion(file_list[0])}")
+        feedback.pushInfo(f"project: {context.flags()}")
+
+        if not ok:
+            raise QgsProcessingException("Failed to unzip file: {}".format(zip_path))
+
+        if not file_list:
+            raise QgsProcessingException("Zip file contains no files.")
+
+        # --- Build outputs ---
+        results = {self.OUT_FILES: file_list, self.OUT_FIRST: file_list[0]}
+
         return results
 
     def name(self):
-        return 'Unzipper'
+        return "Unzipper"
 
     def displayName(self):
-        return 'Unzipper'
+        return "Unzipper"
 
     def group(self):
-        return 'ETL'
+        return "ETL"
 
     def groupId(self):
-        return 'ETL'
+        return "ETL"
 
     def shortHelpString(self):
         return "Unzip file"

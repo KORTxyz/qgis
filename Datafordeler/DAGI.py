@@ -1,11 +1,11 @@
 """
 Download Datafordeler - DAGI
-Name : DownloadDatafordelerDagi 
+Name : DownloadDatafordelerDagi
 Group : ETL
 With QGIS : 34000
 """
 
-from qgis.core import ( 
+from qgis.core import (
     QgsProcessing,
     QgsProcessingAlgorithm,
     QgsProcessingMultiStepFeedback,
@@ -14,76 +14,145 @@ from qgis.core import (
     QgsProcessingParameterFeatureSink,
     QgsSettings
 )
-
 import processing
 
 
 class DAGI(QgsProcessingAlgorithm):
-    Entity = ['Sogneinddeling', 'Samlepostnummer', 'Retskreds', 'Regionsinddeling', 'Postnummerinddeling', 'Politikreds', 'Opstillingskreds', 'MRafstemningsomraade', 'Landsdel', 'Kommuneinddeling', 'Danmark', 'Afstemningsomraade', 'Storkreds', 'SupplerendeBynavn', 'Valglandsdel']
 
+    ENTITIES = [
+        'Sogneinddeling', 'Samlepostnummer', 'Retskreds', 'Regionsinddeling',
+        'Postnummerinddeling', 'Politikreds', 'Opstillingskreds',
+        'MRafstemningsomraade', 'Landsdel', 'Kommuneinddeling', 'Danmark',
+        'Afstemningsomraade', 'Storkreds', 'SupplerendeBynavn', 'Valglandsdel'
+    ]
+
+    TYPES = ['current', 'bitemporal', 'temporal']
+
+    # -------------------------
+    # INIT PARAMETERS
+    # -------------------------
     def initAlgorithm(self, config=None):
         settings = QgsSettings()
         df_api_key = settings.value("kortxyz/df_api_key", "")
-        self.addParameter(QgsProcessingParameterString('apikey', 'apikey', defaultValue=df_api_key, multiLine=False))
-        self.addParameter(QgsProcessingParameterEnum('entity', 'Entity', options=self.Entity, allowMultiple=False, usesStaticStrings=True))
-        self.addParameter(QgsProcessingParameterEnum('type', 'Type', options=['current','bitemporal','temporal'], allowMultiple=False, usesStaticStrings=True))
-        self.addParameter(QgsProcessingParameterFeatureSink('Output', 'Output', createByDefault=True, supportsAppend=True, defaultValue=None))
 
-    def processAlgorithm(self, parameters, context, model_feedback):
-
-
-        # Use a multi-step feedback, so that individual child algorithm progress reports are adjusted for the
-        # overall progress through the model
-        feedback = QgsProcessingMultiStepFeedback(2, model_feedback)
-        results = {}
-        outputs = {}
-        url = (
-            "https://api.datafordeler.dk/FileDownloads/GetFile"
-            "?Register=DAGI"
-            "&type=" + parameters["type"] +
-            "&LatestTotalForEntity=" + parameters["entity"] +
-            "&format=gpkg"
-            "&apiKey=" + parameters["apikey"]
+        self.addParameter(
+            QgsProcessingParameterString(
+                'apikey',
+                'Datafordeler API key',
+                defaultValue=df_api_key,
+                multiLine=False
+            )
         )
 
-        # Download
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                'entity',
+                'Entity',
+                options=self.ENTITIES,
+                allowMultiple=False
+            )
+        )
+
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                'type',
+                'Dataset type',
+                options=self.TYPES,
+                allowMultiple=False
+            )
+        )
+
+        self.addParameter(
+            QgsProcessingParameterFeatureSink(
+                'Output',
+                'Output layer'
+            )
+        )
+
+    # -------------------------
+    # MAIN PROCESSING
+    # -------------------------
+    def processAlgorithm(self, parameters, context, model_feedback):
+
+        feedback = QgsProcessingMultiStepFeedback(3, model_feedback)
+
+        # Build URL safely
+        entity = self.ENTITIES[parameters['entity']]
+        dtype = self.TYPES[parameters['type']]
+        apikey = parameters['apikey']
+
+        url = (
+            f"https://api.datafordeler.dk/FileDownloads/GetFile"
+            f"?Register=DAGI"
+            f"&type={dtype}"
+            f"&LatestTotalForEntity={entity}"
+            f"&format=gpkg"
+            f"&apiKey={apikey}"
+        )
+
+        feedback.pushInfo(f"Requesting: {url}")
+
+        # STEP 1 – Download
         alg_params = {
             'DATA': '',
             'METHOD': 0,  # GET
             'URL': url,
             'OUTPUT': QgsProcessing.TEMPORARY_OUTPUT
         }
-        feedback.pushInfo(f"Calling URL: {url}")
 
-        outputs['Download'] = processing.run('native:filedownloader', alg_params, context=context, feedback=feedback, is_child_algorithm=True)
+        outputs = {}
+        outputs['Download'] = processing.run(
+            'native:filedownloader',
+            alg_params,
+            context=context,
+            feedback=feedback,
+            is_child_algorithm=True
+        )
 
-        feedback.setCurrentStep(1)
         if feedback.isCanceled():
             return {}
 
-        # Unzip
+        feedback.setCurrentStep(1)
+
+        # STEP 2 – Unzip
         alg_params = {
             'DIST': '',
             'Zipfile': outputs['Download']['OUTPUT']
         }
-        
-        outputs['Unzip'] = processing.run('KORTxyz:Unzipper', alg_params, context=context, feedback=feedback, is_child_algorithm=True)
-       
-        feedback.setCurrentStep(1)
+
+        outputs['Unzip'] = processing.run(
+            'KORTxyz:Unzipper',
+            alg_params,
+            context=context,
+            feedback=feedback,
+            is_child_algorithm=True
+        )
+
         if feedback.isCanceled():
             return {}
-        
+
+        feedback.setCurrentStep(2)
+
+        # STEP 3 – Load GPKG into output sink
         alg_params = {
-            'EXPRESSION': '1=1',
             'INPUT': outputs['Unzip']['FIRSTFILE'],
+            'NAME': entity,
             'OUTPUT': parameters['Output']
         }
-        
-        outputs['ExtractByExpression'] = processing.run('native:extractbyexpression', alg_params, context=context, feedback=feedback, is_child_algorithm=True)
 
+        outputs['OutputLayer'] = processing.run(
+            'native:loadlayer',
+            alg_params,
+            context=context,
+            feedback=feedback,
+            is_child_algorithm=True
+        )
 
-        return {'Output':outputs['ExtractByExpression']['OUTPUT']}
-        
+        return {'Output': outputs['OutputLayer']['OUTPUT']}
+
+    # -------------------------
+    # METADATA
+    # -------------------------
     def name(self):
         return 'DownloadDatafordelerDagi'
 
